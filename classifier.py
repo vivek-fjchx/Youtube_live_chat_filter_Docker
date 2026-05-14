@@ -45,14 +45,17 @@ def load_or_quantize():
 
 
 print("[Classifier] Loading model...")
-classifier = load_or_quantize()
+classifier = None
+
+def get_classifier():
+    global classifier
+    if classifier is None:
+        print("[Classifier] Loading model lazily...")
+        classifier = load_or_quantize()
+    return classifier
 print("[Classifier] Model ready ✅")
 
 
 def is_question(text: str, threshold: float = 0.75) -> bool:
-    result = classifier(text, candidate_labels=["question", "statement"])
-    top_label = result["labels"][0]
-    top_score = result["scores"][0]
-
-    print(f"[Classifier] '{text[:60]}' → {top_label} ({top_score:.2f})")
-    return top_label == "question" and top_score >= threshold
+    clf = get_classifier()
+    result = clf(text, candidate_labels=["question", "statement"])
