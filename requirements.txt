@@ -9,4 +9,4 @@ openai
 google-genai
 numpy
 httpx
-"optimum[onnxruntime]"
+optimum[onnxruntime]
