@@ -3,9 +3,11 @@ uvicorn
 pydantic
 python-dotenv
 transformers
-torch --index-url https://download.pytorch.org/whl/cpu
+torch 
 sentence-transformers
 openai
 google-genai
 numpy
 httpx
+optimum
+onnxruntime
