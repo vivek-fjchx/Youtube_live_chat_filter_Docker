@@ -3,7 +3,7 @@ uvicorn
 pydantic
 python-dotenv
 transformers
-torch 
+torch --index-url https://download.pytorch.org/whl/cpu
 sentence-transformers
 openai
 google-genai
