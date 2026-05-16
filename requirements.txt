@@ -10,3 +10,7 @@ google-genai
 numpy
 httpx
 optimum[onnxruntime]
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
