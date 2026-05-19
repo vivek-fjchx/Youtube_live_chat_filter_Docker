@@ -8,7 +8,7 @@ from classifier import is_question
 from prefilter import prefilter
 from deduplicator import is_duplicate
 from ranker import add_to_buffer, group_and_rank, set_buffer_context
-from youtube_ingestion import get_oauth_flow, start_polling, set_ingest_callback
+
 from google.oauth2.credentials import Credentials
 
 app = FastAPI()
@@ -146,6 +146,7 @@ class StreamPayload(BaseModel):
 
 @app.post("/start_stream")
 async def start_stream(payload: StreamPayload):
+    from youtube_ingestion import get_oauth_flow, start_polling, set_ingest_callback
     credentials = Credentials(
         token=payload.access_token,
         refresh_token=payload.refresh_token,

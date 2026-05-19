@@ -3,7 +3,6 @@ import time
 import threading
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
-from googleapiclient.discovery import build
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.readonly"]
 POLL_INTERVAL_SECONDS = 60  # poll every 60s
@@ -48,6 +47,7 @@ def get_live_chat_id(youtube, video_id: str) -> str | None:
 
 def poll_chat(credentials: Credentials, video_id: str):
     """Poll YouTube live chat every 60s and push to pipeline."""
+    from googleapiclient.discovery import build
     youtube = build("youtube", "v3", credentials=credentials)
     live_chat_id = get_live_chat_id(youtube, video_id)
 
