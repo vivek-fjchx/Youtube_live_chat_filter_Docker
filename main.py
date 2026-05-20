@@ -122,14 +122,16 @@ async def auth_login():
 @app.get("/auth/callback")
 async def auth_callback(code: str):
     from youtube_ingestion import get_oauth_flow
+    from fastapi.responses import RedirectResponse
+
     flow = get_oauth_flow(f"{RENDER_URL}/auth/callback")
     flow.fetch_token(code=code)
     credentials = flow.credentials
-    return {
-        "status": "authenticated",
-        "access_token": credentials.token,
-        "refresh_token": credentials.refresh_token
-    }
+
+    FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+    return RedirectResponse(
+        f"{FRONTEND_URL}?access_token={credentials.token}&refresh_token={credentials.refresh_token}"
+    )
 
 
 @app.post("/start_stream")
