@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 
 const API = "https://youtube-live-chat-filter.onrender.com";
@@ -12,6 +12,7 @@ interface RankedQuestion {
 
 export default function App() {
   const [questions, setQuestions] = useState<RankedQuestion[]>([]);
+  const [answeredQuestions, setAnsweredQuestions] = useState<RankedQuestion[]>([]);
   const [topic, setTopicInput] = useState("");
   const [currentTopic, setCurrentTopic] = useState("");
   const [videoId, setVideoId] = useState("");
@@ -19,8 +20,9 @@ export default function App() {
   const [refreshToken, setRefreshToken] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [status, setStatus] = useState("");
+  const [pulse, setPulse] = useState(false);
+  const answeredRef = useRef<HTMLDivElement>(null);
 
-  // ─── Check if returning from OAuth callback ────────────────────────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const at = params.get("access_token");
@@ -28,28 +30,28 @@ export default function App() {
     if (at && rt) {
       setAccessToken(at);
       setRefreshToken(rt);
-      setStatus("✅ Authenticated! Enter your video ID and start stream.");
-      window.history.replaceState({}, "", "/"); // clean URL
+      setStatus("Authenticated — enter your video ID to begin.");
+      window.history.replaceState({}, "", "/");
     }
   }, []);
 
-  // ─── Poll for questions ────────────────────────────────────────────────────
   useEffect(() => {
     if (!streaming) return;
-    const fetch = async () => {
+    const fetchQ = async () => {
       try {
         const res = await axios.get(`${API}/ranked`);
         setQuestions(res.data.questions);
+        setPulse(true);
+        setTimeout(() => setPulse(false), 600);
       } catch (err) {
         console.error(err);
       }
     };
-    fetch();
-    const interval = setInterval(fetch, 15000);
+    fetchQ();
+    const interval = setInterval(fetchQ, 15000);
     return () => clearInterval(interval);
   }, [streaming]);
 
-  // ─── Handlers ─────────────────────────────────────────────────────────────
   const handleLogin = async () => {
     const res = await axios.get(`${API}/auth/login`);
     window.location.href = res.data.auth_url;
@@ -60,10 +62,10 @@ export default function App() {
     await axios.post(`${API}/start_stream`, {
       video_id: videoId,
       access_token: accessToken,
-      refresh_token: refreshToken
+      refresh_token: refreshToken,
     });
     setStreaming(true);
-    setStatus(`🔴 Live — polling chat for video: ${videoId}`);
+    setStatus(`Live · ${videoId}`);
   };
 
   const handleSetTopic = async () => {
@@ -73,121 +75,601 @@ export default function App() {
     setTopicInput("");
   };
 
-  const markAnswered = async (canonical: string) => {
-    await axios.post(`${API}/mark_answered`, { canonical });
-    setQuestions(prev => prev.filter(q => q.canonical !== canonical));
+  const markAnswered = async (q: RankedQuestion) => {
+    await axios.post(`${API}/mark_answered`, { canonical: q.canonical });
+    setQuestions((prev) => prev.filter((x) => x.canonical !== q.canonical));
+    setAnsweredQuestions((prev) => [q, ...prev]);
+    setTimeout(() => {
+      answeredRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    }, 100);
   };
 
-  const formatTime = (ts: number) => new Date(ts).toLocaleTimeString();
+  const formatTime = (ts: number) =>
+    new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <h1 style={styles.title}>🎯 Creator Dashboard</h1>
-        <p style={styles.subtitle}>Live question filter — only genuine doubts reach you</p>
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+          --bg: #0d0f14;
+          --surface: #13161e;
+          --surface2: #1a1e2a;
+          --border: rgba(255,255,255,0.07);
+          --border-bright: rgba(255,255,255,0.13);
+          --red: #ff3b3b;
+          --red-dim: rgba(255,59,59,0.12);
+          --green: #22c55e;
+          --green-dim: rgba(34,197,94,0.1);
+          --yellow: #f59e0b;
+          --blue: #3b82f6;
+          --text: #f0f2f7;
+          --text-muted: #6b7280;
+          --text-mid: #9ca3af;
+          --font-serif: 'Instrument Serif', Georgia, serif;
+          --font-sans: 'DM Sans', system-ui, sans-serif;
+        }
+
+        body {
+          background: var(--bg);
+          color: var(--text);
+          font-family: var(--font-sans);
+          min-height: 100vh;
+          overflow-x: hidden;
+        }
+
+        /* TOPBAR */
+        .topbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0 28px;
+          height: 56px;
+          border-bottom: 1px solid var(--border);
+          background: var(--surface);
+          position: sticky;
+          top: 0;
+          z-index: 100;
+        }
+        .topbar-left { display: flex; align-items: center; gap: 14px; }
+        .logo-mark {
+          width: 30px; height: 30px;
+          background: var(--red);
+          border-radius: 6px;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 13px;
+        }
+        .logo-text {
+          font-family: var(--font-serif);
+          font-size: 17px;
+          letter-spacing: -0.01em;
+          color: var(--text);
+        }
+        .live-pill {
+          display: flex; align-items: center; gap: 6px;
+          background: var(--red-dim);
+          border: 1px solid rgba(255,59,59,0.3);
+          border-radius: 100px;
+          padding: 3px 10px;
+          font-size: 11px;
+          font-weight: 600;
+          color: var(--red);
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          opacity: 0;
+          transition: opacity 0.3s;
+        }
+        .live-pill.visible { opacity: 1; }
+        .live-dot {
+          width: 6px; height: 6px;
+          background: var(--red);
+          border-radius: 50%;
+          animation: blink 1.2s ease-in-out infinite;
+        }
+        @keyframes blink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.3; }
+        }
+        .topbar-right { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-muted); }
+        .video-id-tag {
+          background: var(--surface2);
+          border: 1px solid var(--border-bright);
+          border-radius: 6px;
+          padding: 4px 10px;
+          font-size: 12px;
+          color: var(--text-mid);
+          font-family: monospace;
+        }
+
+        /* TOPIC BAR */
+        .topic-bar {
+          background: var(--surface);
+          border-bottom: 1px solid var(--border);
+          padding: 10px 28px;
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          font-size: 13px;
+        }
+        .topic-label { color: var(--text-muted); white-space: nowrap; font-weight: 500; }
+        .topic-value {
+          color: var(--yellow);
+          font-style: italic;
+          font-family: var(--font-serif);
+          font-size: 15px;
+          flex: 1;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .topic-input {
+          background: var(--surface2);
+          border: 1px solid var(--border-bright);
+          border-radius: 8px;
+          padding: 7px 12px;
+          font-size: 13px;
+          color: var(--text);
+          font-family: var(--font-sans);
+          outline: none;
+          width: 280px;
+          transition: border-color 0.2s;
+        }
+        .topic-input::placeholder { color: var(--text-muted); }
+        .topic-input:focus { border-color: rgba(245,158,11,0.4); }
+        .btn-topic {
+          padding: 7px 14px;
+          background: rgba(245,158,11,0.12);
+          border: 1px solid rgba(245,158,11,0.3);
+          border-radius: 8px;
+          color: var(--yellow);
+          font-size: 13px;
+          font-weight: 500;
+          cursor: pointer;
+          font-family: var(--font-sans);
+          transition: background 0.2s;
+          white-space: nowrap;
+        }
+        .btn-topic:hover { background: rgba(245,158,11,0.2); }
+
+        /* SPLIT LAYOUT */
+        .split {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          height: calc(100vh - 56px - 44px);
+          overflow: hidden;
+        }
+
+        .panel {
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          border-right: 1px solid var(--border);
+        }
+        .panel:last-child { border-right: none; }
+
+        .panel-header {
+          padding: 16px 22px;
+          border-bottom: 1px solid var(--border);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-shrink: 0;
+        }
+        .panel-title {
+          display: flex;
+          align-items: center;
+          gap: 9px;
+          font-size: 13px;
+          font-weight: 600;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          color: var(--text-muted);
+        }
+        .panel-title-icon { font-size: 15px; }
+        .count-badge {
+          background: var(--surface2);
+          border: 1px solid var(--border-bright);
+          border-radius: 100px;
+          padding: 2px 8px;
+          font-size: 11px;
+          font-weight: 600;
+          color: var(--text-mid);
+          min-width: 24px;
+          text-align: center;
+        }
+        .count-badge.active {
+          background: var(--red-dim);
+          border-color: rgba(255,59,59,0.3);
+          color: var(--red);
+        }
+        .count-badge.answered {
+          background: var(--green-dim);
+          border-color: rgba(34,197,94,0.25);
+          color: var(--green);
+        }
+
+        .panel-scroll {
+          flex: 1;
+          overflow-y: auto;
+          padding: 14px;
+          scrollbar-width: thin;
+          scrollbar-color: var(--surface2) transparent;
+        }
+
+        /* QUESTION CARD */
+        .qcard {
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          padding: 14px 16px;
+          margin-bottom: 10px;
+          transition: border-color 0.2s, transform 0.15s;
+          animation: slideIn 0.25s ease;
+        }
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateY(-6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .qcard:hover { border-color: var(--border-bright); }
+        .qcard.answered-card {
+          border-color: rgba(34,197,94,0.15);
+          opacity: 0.75;
+        }
+        .qcard.answered-card:hover { opacity: 1; border-color: rgba(34,197,94,0.3); }
+
+        .card-meta {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          margin-bottom: 10px;
+          flex-wrap: wrap;
+        }
+        .rank-num {
+          width: 22px; height: 22px;
+          background: var(--surface2);
+          border: 1px solid var(--border-bright);
+          border-radius: 5px;
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--text-mid);
+          display: flex; align-items: center; justify-content: center;
+          flex-shrink: 0;
+        }
+        .rank-num.top { background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.3); color: var(--blue); }
+
+        .meta-pill {
+          display: flex; align-items: center; gap: 4px;
+          padding: 2px 8px;
+          border-radius: 100px;
+          font-size: 11px;
+          font-weight: 500;
+        }
+        .pill-viewers { background: var(--green-dim); color: var(--green); border: 1px solid rgba(34,197,94,0.2); }
+        .pill-time { background: rgba(107,114,128,0.1); color: var(--text-muted); border: 1px solid var(--border); }
+        .pill-answered { background: var(--green-dim); color: var(--green); border: 1px solid rgba(34,197,94,0.25); }
+
+        .q-text {
+          font-size: 14px;
+          line-height: 1.55;
+          color: var(--text);
+          margin-bottom: 12px;
+        }
+        .answered-card .q-text { color: var(--text-mid); }
+
+        .card-footer {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+        .contributors {
+          font-size: 11.5px;
+          color: var(--text-muted);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          flex: 1;
+        }
+        .contributors span { color: var(--blue); }
+
+        .btn-answer {
+          flex-shrink: 0;
+          padding: 5px 12px;
+          background: var(--green-dim);
+          border: 1px solid rgba(34,197,94,0.25);
+          border-radius: 7px;
+          color: var(--green);
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          font-family: var(--font-sans);
+          transition: background 0.15s, transform 0.1s;
+          letter-spacing: 0.02em;
+        }
+        .btn-answer:hover { background: rgba(34,197,94,0.18); transform: scale(1.02); }
+        .btn-answer:active { transform: scale(0.98); }
+
+        .empty-state {
+          padding: 48px 24px;
+          text-align: center;
+          color: var(--text-muted);
+        }
+        .empty-icon { font-size: 36px; margin-bottom: 10px; opacity: 0.4; }
+        .empty-text { font-size: 13px; line-height: 1.6; }
+
+        /* PULSE */
+        @keyframes pulse-border {
+          0% { box-shadow: 0 0 0 0 rgba(255,59,59,0.25); }
+          70% { box-shadow: 0 0 0 6px rgba(255,59,59,0); }
+          100% { box-shadow: 0 0 0 0 rgba(255,59,59,0); }
+        }
+        .panel.pulsing .panel-header { animation: pulse-border 0.6s ease; }
+
+        /* SETUP SCREEN */
+        .setup-screen {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: calc(100vh - 56px);
+          padding: 24px;
+        }
+        .setup-card {
+          background: var(--surface);
+          border: 1px solid var(--border-bright);
+          border-radius: 16px;
+          padding: 40px 44px;
+          max-width: 480px;
+          width: 100%;
+          text-align: center;
+        }
+        .setup-icon { font-size: 42px; margin-bottom: 16px; }
+        .setup-title {
+          font-family: var(--font-serif);
+          font-size: 26px;
+          margin-bottom: 8px;
+          letter-spacing: -0.02em;
+        }
+        .setup-sub { font-size: 14px; color: var(--text-muted); margin-bottom: 30px; line-height: 1.6; }
+        .setup-input {
+          width: 100%;
+          background: var(--surface2);
+          border: 1px solid var(--border-bright);
+          border-radius: 10px;
+          padding: 11px 14px;
+          font-size: 14px;
+          color: var(--text);
+          font-family: var(--font-sans);
+          outline: none;
+          margin-bottom: 12px;
+          transition: border-color 0.2s;
+        }
+        .setup-input::placeholder { color: var(--text-muted); }
+        .setup-input:focus { border-color: var(--red); }
+        .btn-primary {
+          width: 100%;
+          padding: 12px;
+          background: var(--red);
+          border: none;
+          border-radius: 10px;
+          color: #fff;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          font-family: var(--font-sans);
+          letter-spacing: 0.02em;
+          transition: opacity 0.15s, transform 0.1s;
+        }
+        .btn-primary:hover { opacity: 0.9; }
+        .btn-primary:active { transform: scale(0.99); }
+        .setup-status {
+          margin-top: 14px;
+          font-size: 13px;
+          color: var(--green);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+        }
+
+        /* SCROLLBAR */
+        .panel-scroll::-webkit-scrollbar { width: 5px; }
+        .panel-scroll::-webkit-scrollbar-track { background: transparent; }
+        .panel-scroll::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 10px; }
+      `}</style>
+
+      {/* TOPBAR */}
+      <div className="topbar">
+        <div className="topbar-left">
+          <div className="logo-mark">▶</div>
+          <span className="logo-text">StreamFilter</span>
+          <div className={`live-pill ${streaming ? "visible" : ""}`}>
+            <div className="live-dot" />
+            Live
+          </div>
+        </div>
+        <div className="topbar-right">
+          {streaming && videoId && (
+            <div className="video-id-tag">{videoId}</div>
+          )}
+          <span>{streaming ? `${questions.length} active · ${answeredQuestions.length} answered` : "Not streaming"}</span>
+        </div>
       </div>
 
-      {/* Auth + Stream setup */}
-      {!streaming && (
-        <div style={styles.setupBox}>
-          {!accessToken ? (
-            <button style={styles.button} onClick={handleLogin}>
-              🔐 Login with YouTube
-            </button>
-          ) : (
-            <div style={styles.row}>
-              <input
-                style={styles.input}
-                placeholder="YouTube Video ID (e.g. dQw4w9WgXcQ)"
-                value={videoId}
-                onChange={e => setVideoId(e.target.value)}
-              />
-              <button style={styles.button} onClick={handleStartStream}>
-                ▶ Start Stream
-              </button>
-            </div>
-          )}
-          {status && <p style={styles.statusText}>{status}</p>}
-        </div>
-      )}
-
-      {/* Topic setter */}
-      {streaming && (
-        <>
-          <div style={styles.statusBar}>{status}</div>
-          <div style={styles.topicBox}>
-            <p style={styles.label}>
-              Current Topic: <strong>{currentTopic || "Not set — all questions passing through"}</strong>
+      {!streaming ? (
+        <div className="setup-screen">
+          <div className="setup-card">
+            <div className="setup-icon">🎬</div>
+            <h1 className="setup-title">Creator Dashboard</h1>
+            <p className="setup-sub">
+              Filter your live chat in real-time. Only genuine questions from your
+              audience — ranked by viewer interest — reach you.
             </p>
-            <div style={styles.row}>
-              <input
-                style={styles.input}
-                placeholder="e.g. friction and laws of motion"
-                value={topic}
-                onChange={e => setTopicInput(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleSetTopic()}
-              />
-              <button style={styles.button} onClick={handleSetTopic}>
-                Update Topic
-              </button>
-            </div>
+            {!accessToken ? (
+              <>
+                <button className="btn-primary" onClick={handleLogin}>
+                  Connect YouTube Account
+                </button>
+                {status && <div className="setup-status">✓ {status}</div>}
+              </>
+            ) : (
+              <>
+                {status && <div className="setup-status" style={{ marginBottom: 16 }}>✓ {status}</div>}
+                <input
+                  className="setup-input"
+                  placeholder="YouTube Video ID (e.g. dQw4w9WgXcQ)"
+                  value={videoId}
+                  onChange={(e) => setVideoId(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleStartStream()}
+                />
+                <button
+                  className="btn-primary"
+                  onClick={handleStartStream}
+                  disabled={!videoId}
+                  style={{ opacity: videoId ? 1 : 0.45 }}
+                >
+                  Start Filtering Chat →
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* TOPIC BAR */}
+          <div className="topic-bar">
+            <span className="topic-label">Topic</span>
+            <span className="topic-value">
+              {currentTopic || "All questions passing through — set a topic to filter"}
+            </span>
+            <input
+              className="topic-input"
+              placeholder="e.g. friction and laws of motion"
+              value={topic}
+              onChange={(e) => setTopicInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSetTopic()}
+            />
+            <button className="btn-topic" onClick={handleSetTopic}>
+              Update
+            </button>
           </div>
 
-          {/* Questions */}
-          <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>📥 Ranked Questions ({questions.length})</h2>
-            {questions.length === 0 && (
-              <p style={styles.empty}>No questions yet — waiting for next batch...</p>
-            )}
-            {questions.map((q, i) => (
-              <div key={i} style={styles.card}>
-                <div style={styles.rankRow}>
-                  <span style={styles.rankBadge}>#{i + 1}</span>
-                  <span style={styles.viewerBadge}>👥 {q.viewer_count} viewer{q.viewer_count > 1 ? "s" : ""}</span>
-                  <span style={styles.timeBadge}>🕐 {formatTime(q.mean_timestamp)}</span>
+          {/* SPLIT PANELS */}
+          <div className="split">
+            {/* LEFT: Incoming questions */}
+            <div className={`panel ${pulse ? "pulsing" : ""}`}>
+              <div className="panel-header">
+                <div className="panel-title">
+                  <span className="panel-title-icon">📥</span>
+                  Incoming Questions
                 </div>
-                <p style={styles.questionText}>{q.canonical}</p>
-                <div style={styles.cardFooter}>
-                  <span style={styles.contributors}>
-                    Asked by: {q.contributors.slice(0, 3).map(c => `@${c}`).join(", ")}
-                    {q.contributors.length > 3 && ` +${q.contributors.length - 3} more`}
-                  </span>
-                  <button style={styles.answerBtn} onClick={() => markAnswered(q.canonical)}>
-                    ✅ Mark Answered
-                  </button>
-                </div>
+                <span className={`count-badge ${questions.length > 0 ? "active" : ""}`}>
+                  {questions.length}
+                </span>
               </div>
-            ))}
+              <div className="panel-scroll">
+                {questions.length === 0 ? (
+                  <div className="empty-state">
+                    <div className="empty-icon">💬</div>
+                    <p className="empty-text">
+                      Waiting for questions from chat…
+                      <br />Polling every 15 seconds.
+                    </p>
+                  </div>
+                ) : (
+                  questions.map((q, i) => (
+                    <div key={q.canonical} className="qcard">
+                      <div className="card-meta">
+                        <div className={`rank-num ${i === 0 ? "top" : ""}`}>
+                          {i + 1}
+                        </div>
+                        <div className="meta-pill pill-viewers">
+                          👥 {q.viewer_count} {q.viewer_count === 1 ? "viewer" : "viewers"}
+                        </div>
+                        <div className="meta-pill pill-time">
+                          {formatTime(q.mean_timestamp)}
+                        </div>
+                      </div>
+                      <p className="q-text">{q.canonical}</p>
+                      <div className="card-footer">
+                        <span className="contributors">
+                          <span>
+                            {q.contributors
+                              .slice(0, 3)
+                              .map((c) => `@${c}`)
+                              .join(", ")}
+                          </span>
+                          {q.contributors.length > 3 &&
+                            ` +${q.contributors.length - 3} more`}
+                        </span>
+                        <button
+                          className="btn-answer"
+                          onClick={() => markAnswered(q)}
+                        >
+                          Mark Answered ✓
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* RIGHT: Answered questions */}
+            <div className="panel">
+              <div className="panel-header">
+                <div className="panel-title">
+                  <span className="panel-title-icon">✅</span>
+                  Answered
+                </div>
+                <span className={`count-badge ${answeredQuestions.length > 0 ? "answered" : ""}`}>
+                  {answeredQuestions.length}
+                </span>
+              </div>
+              <div className="panel-scroll" ref={answeredRef}>
+                {answeredQuestions.length === 0 ? (
+                  <div className="empty-state">
+                    <div className="empty-icon">🎯</div>
+                    <p className="empty-text">
+                      Questions you've addressed will appear here.
+                    </p>
+                  </div>
+                ) : (
+                  answeredQuestions.map((q, i) => (
+                    <div key={`${q.canonical}-${i}`} className="qcard answered-card">
+                      <div className="card-meta">
+                        <div className="meta-pill pill-answered">✓ Answered</div>
+                        <div className="meta-pill pill-time">
+                          {formatTime(q.mean_timestamp)}
+                        </div>
+                        <div className="meta-pill pill-viewers">
+                          👥 {q.viewer_count}
+                        </div>
+                      </div>
+                      <p className="q-text">{q.canonical}</p>
+                      <div className="card-footer">
+                        <span className="contributors">
+                          <span>
+                            {q.contributors
+                              .slice(0, 3)
+                              .map((c) => `@${c}`)
+                              .join(", ")}
+                          </span>
+                          {q.contributors.length > 3 &&
+                            ` +${q.contributors.length - 3} more`}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </>
       )}
-    </div>
+    </>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: { maxWidth: 800, margin: "0 auto", padding: 24, fontFamily: "sans-serif" },
-  header: { marginBottom: 24 },
-  title: { fontSize: 28, fontWeight: 700, margin: 0 },
-  subtitle: { color: "#666", marginTop: 4 },
-  setupBox: { background: "#f5f5f5", borderRadius: 8, padding: 24, marginBottom: 24, textAlign: "center" },
-  statusBar: { background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 6, padding: "8px 16px", marginBottom: 16, fontSize: 14 },
-  topicBox: { background: "#f5f5f5", borderRadius: 8, padding: 16, marginBottom: 24 },
-  label: { margin: "0 0 10px 0" },
-  row: { display: "flex", gap: 8 },
-  input: { flex: 1, padding: "8px 12px", borderRadius: 6, border: "1px solid #ccc", fontSize: 14 },
-  button: { padding: "8px 16px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14 },
-  statusText: { marginTop: 12, color: "#16a34a", fontWeight: 500 },
-  section: { marginBottom: 32 },
-  sectionTitle: { fontSize: 18, fontWeight: 600, marginBottom: 12 },
-  empty: { color: "#999", fontStyle: "italic" },
-  card: { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 16, marginBottom: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" },
-  rankRow: { display: "flex", gap: 8, alignItems: "center", marginBottom: 8 },
-  rankBadge: { background: "#2563eb", color: "#fff", borderRadius: 4, padding: "2px 8px", fontSize: 12, fontWeight: 700 },
-  viewerBadge: { background: "#f0fdf4", color: "#16a34a", borderRadius: 4, padding: "2px 8px", fontSize: 12, fontWeight: 600 },
-  timeBadge: { background: "#fefce8", color: "#ca8a04", borderRadius: 4, padding: "2px 8px", fontSize: 12 },
-  questionText: { margin: "0 0 10px 0", fontSize: 15, lineHeight: 1.5 },
-  cardFooter: { display: "flex", justifyContent: "space-between", alignItems: "center" },
-  contributors: { color: "#888", fontSize: 12 },
-  answerBtn: { padding: "6px 12px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13 },
-};
