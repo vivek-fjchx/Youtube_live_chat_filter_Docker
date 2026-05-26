@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: youtube-filter-api
+    ports:
+      - "8000:8000"
+    environment:
+      # YouTube OAuth credentials
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      # Frontend URL (your Vercel deployment)
+      FRONTEND_URL: ${FRONTEND_URL}
+      # Backend URL (for OAuth callbacks)
+      RENDER_URL: ${RENDER_URL}
+    volumes:
+      # Mount source code for hot reload during development
+      - ./:/app
+    restart: unless-stopped
+    networks:
+      - youtube-filter-network
+
+networks:
+  youtube-filter-network:
+    driver: bridge
