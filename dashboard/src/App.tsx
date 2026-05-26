@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 
-const API = "https://youtube-live-chat-filter.onrender.com";
+const API = "https://youtube-live-chat-filter-docker.onrender.com";
 
 interface RankedQuestion {
   canonical: string;
