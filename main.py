@@ -40,6 +40,7 @@ class StreamPayload(BaseModel):
 
 ranked_questions: list[dict] = []
 answered_canonicals: set[str] = set()
+oauth_flow_storage = {}  # Store flow instances
 
 # ─── Pipeline function ────────────────────────────────────────────────────────
 
@@ -114,24 +115,43 @@ RENDER_URL = os.environ.get("RENDER_URL", "http://localhost:8000")
 @app.get("/auth/login")
 async def auth_login():
     from youtube_ingestion import get_oauth_flow
+    import uuid
+    
+    # Create unique flow instance and store it
+    flow_id = str(uuid.uuid4())
     flow = get_oauth_flow(f"{RENDER_URL}/auth/callback")
-    auth_url, _ = flow.authorization_url(prompt="consent")
-    return {"auth_url": auth_url}
+    oauth_flow_storage[flow_id] = flow
+    
+    # Generate auth URL with state containing flow_id
+    auth_url, state = flow.authorization_url(prompt="consent")
+    
+    return {
+        "auth_url": f"{auth_url}&state={flow_id}",
+        "flow_id": flow_id
+    }
 
 
 @app.get("/auth/callback")
-async def auth_callback(code: str):
-    from youtube_ingestion import get_oauth_flow
+async def auth_callback(code: str, state: str = None):
     from fastapi.responses import RedirectResponse
+    
+    try:
+        # Retrieve the flow instance from storage
+        if not state or state not in oauth_flow_storage:
+            raise HTTPException(status_code=400, detail="Invalid state parameter")
+        
+        flow = oauth_flow_storage.pop(state)  # Remove after use
+        flow.fetch_token(code=code)
+        credentials = flow.credentials
 
-    flow = get_oauth_flow(f"{RENDER_URL}/auth/callback")
-    flow.fetch_token(code=code)
-    credentials = flow.credentials
-
-    FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
-    return RedirectResponse(
-        f"{FRONTEND_URL}?access_token={credentials.token}&refresh_token={credentials.refresh_token}"
-    )
+        FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+        return RedirectResponse(
+            f"{FRONTEND_URL}?access_token={credentials.token}&refresh_token={credentials.refresh_token}"
+        )
+    except Exception as e:
+        print(f"[OAuth Error] {e}")
+        FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+        return RedirectResponse(f"{FRONTEND_URL}?error={str(e)}")
 
 
 @app.post("/start_stream")
