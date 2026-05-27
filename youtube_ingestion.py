@@ -19,7 +19,7 @@ def set_ingest_callback(fn):
 
 
 def get_oauth_flow(redirect_uri: str) -> Flow:
-    flow = Flow.from_client_config(
+    return Flow.from_client_config(
         {
             "web": {
                 "client_id": os.environ.get("GOOGLE_CLIENT_ID"),
@@ -31,9 +31,6 @@ def get_oauth_flow(redirect_uri: str) -> Flow:
         scopes=SCOPES,
         redirect_uri=redirect_uri
     )
-    # Disable PKCE to fix "Missing code verifier" error
-    flow.code_verifier = None
-    return flow
 
 
 def get_live_chat_id(youtube, video_id: str) -> str | None:
