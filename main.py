@@ -1,4 +1,5 @@
 import os
+os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -115,27 +116,29 @@ RENDER_URL = os.environ.get("RENDER_URL", "http://localhost:8000")
 @app.get("/auth/login")
 async def auth_login():
     from youtube_ingestion import get_oauth_flow
-    import uuid
     
-    # Create unique flow instance and store it
-    flow_id = str(uuid.uuid4())
+    # Create flow instance and store it
     flow = get_oauth_flow(f"{RENDER_URL}/auth/callback")
-    oauth_flow_storage[flow_id] = flow
     
-    # Generate auth URL with state containing flow_id
+    # Generate auth URL with library-generated state
     auth_url, state = flow.authorization_url(prompt="consent")
+    oauth_flow_storage[state] = flow
     
     return {
-        "auth_url": f"{auth_url}&state={flow_id}",
-        "flow_id": flow_id
+        "auth_url": auth_url,
+        "state": state
     }
 
 
 @app.get("/auth/callback")
-async def auth_callback(code: str, state: str = None):
+async def auth_callback(code: str = None, state: str = None):
     from fastapi.responses import RedirectResponse
+    import urllib.parse
     
     try:
+        if not code:
+            raise HTTPException(status_code=400, detail="Missing authorization code")
+            
         # Retrieve the flow instance from storage
         if not state or state not in oauth_flow_storage:
             raise HTTPException(status_code=400, detail="Invalid state parameter")
@@ -151,7 +154,8 @@ async def auth_callback(code: str, state: str = None):
     except Exception as e:
         print(f"[OAuth Error] {e}")
         FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
-        return RedirectResponse(f"{FRONTEND_URL}?error={str(e)}")
+        error_msg = urllib.parse.quote(str(e))
+        return RedirectResponse(f"{FRONTEND_URL}?error={error_msg}")
 
 
 @app.post("/start_stream")

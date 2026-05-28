@@ -12,7 +12,7 @@ def get_classifier():
             "zero-shot-classification",
             model=MODEL_NAME
         )
-        print("[Classifier] Model ready ✅")
+        print("[Classifier] Model ready [OK]")
     return classifier
 
 

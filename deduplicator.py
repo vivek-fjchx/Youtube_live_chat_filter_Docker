@@ -13,7 +13,7 @@ def get_model():
         model = SentenceTransformer("all-MiniLM-L6-v2")
     return model
   # lightweight, ~80MB
-print("[Deduplicator] Model ready ✅")
+print("[Deduplicator] Model ready [OK]")
 
 # In-memory store of embeddings for seen questions
 stored_embeddings = []
