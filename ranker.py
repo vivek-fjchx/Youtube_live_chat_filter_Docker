@@ -6,10 +6,24 @@ from dotenv import load_dotenv
 load_dotenv()
 current_context = {"topic": ""}
 
-client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=os.environ.get("OPENROUTER_API_KEY")
-)
+# Lazy client — only created when first needed so missing API key
+# does NOT crash the app at startup (important for Railway / Render cold starts)
+_client = None
+
+def get_client() -> OpenAI:
+    global _client
+    if _client is None:
+        api_key = os.environ.get("OPENROUTER_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "OPENROUTER_API_KEY is not set. "
+                "Add it to your Railway / Render environment variables."
+            )
+        _client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key
+        )
+    return _client
 
 BUFFER_WINDOW_SECONDS = 4 * 60  # 4 minutes
 
@@ -72,7 +86,7 @@ Respond ONLY with a JSON array, no explanation, no markdown, like this:
 ]"""
 
     try:
-        response = client.chat.completions.create(
+        response = get_client().chat.completions.create(
             model="google/gemma-3-27b-it:free",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=1000
