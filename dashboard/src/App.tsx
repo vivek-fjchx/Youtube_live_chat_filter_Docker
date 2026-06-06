@@ -75,6 +75,11 @@ export default function App() {
     setTopicInput("");
   };
 
+  const deleteQuestion = async (canonical: string) => {
+    await axios.post(`${API}/mark_answered`, { canonical });
+    setQuestions((prev) => prev.filter((x) => x.canonical !== canonical));
+  };
+
   const markAnswered = async (q: RankedQuestion) => {
     await axios.post(`${API}/mark_answered`, { canonical: q.canonical });
     setQuestions((prev) => prev.filter((x) => x.canonical !== q.canonical));
@@ -393,6 +398,23 @@ export default function App() {
         .btn-answer:hover { background: rgba(34,197,94,0.18); transform: scale(1.02); }
         .btn-answer:active { transform: scale(0.98); }
 
+        .btn-delete {
+          flex-shrink: 0;
+          padding: 5px 8px;
+          background: transparent;
+          border: 1px solid rgba(255,59,59,0.2);
+          border-radius: 7px;
+          color: var(--red);
+          font-size: 13px;
+          cursor: pointer;
+          font-family: var(--font-sans);
+          transition: background 0.15s, transform 0.1s;
+          opacity: 0.6;
+          line-height: 1;
+        }
+        .btn-delete:hover { background: var(--red-dim); opacity: 1; transform: scale(1.05); }
+        .btn-delete:active { transform: scale(0.95); }
+
         .empty-state {
           padding: 48px 24px;
           text-align: center;
@@ -605,12 +627,21 @@ export default function App() {
                           {q.contributors.length > 3 &&
                             ` +${q.contributors.length - 3} more`}
                         </span>
-                        <button
-                          className="btn-answer"
-                          onClick={() => markAnswered(q)}
-                        >
-                          Mark Answered ✓
-                        </button>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button
+                            className="btn-delete"
+                            onClick={() => deleteQuestion(q.canonical)}
+                            title="Delete question"
+                          >
+                            🗑
+                          </button>
+                          <button
+                            className="btn-answer"
+                            onClick={() => markAnswered(q)}
+                          >
+                            Mark Answered ✓
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))
