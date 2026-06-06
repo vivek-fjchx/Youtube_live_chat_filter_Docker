@@ -16,25 +16,45 @@ export default function App() {
   const [topic, setTopicInput] = useState("");
   const [currentTopic, setCurrentTopic] = useState("");
   const [videoId, setVideoId] = useState("");
-  const [accessToken, setAccessToken] = useState("");
-  const [refreshToken, setRefreshToken] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [status, setStatus] = useState("");
   const [pulse, setPulse] = useState(false);
   const answeredRef = useRef<HTMLDivElement>(null);
 
+  // ── Restore tokens from localStorage on first load ───────────────────────
+  const [accessToken, setAccessToken] = useState<string>(
+    () => localStorage.getItem("sf_access_token") ?? ""
+  );
+  const [refreshToken, setRefreshToken] = useState<string>(
+    () => localStorage.getItem("sf_refresh_token") ?? ""
+  );
+
+  // Persist tokens to localStorage whenever they change
+  useEffect(() => {
+    if (accessToken) localStorage.setItem("sf_access_token", accessToken);
+    if (refreshToken) localStorage.setItem("sf_refresh_token", refreshToken);
+  }, [accessToken, refreshToken]);
+
+  // Read tokens injected by the OAuth redirect (overrides stored ones)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const at = params.get("access_token");
     const rt = params.get("refresh_token");
+    const err = params.get("error");
     if (at && rt) {
       setAccessToken(at);
       setRefreshToken(rt);
       setStatus("Authenticated — enter your video ID to begin.");
       window.history.replaceState({}, "", "/");
+    } else if (err) {
+      setStatus(`Auth error: ${decodeURIComponent(err)}`);
+      window.history.replaceState({}, "", "/");
+    } else if (localStorage.getItem("sf_access_token")) {
+      setStatus("Authenticated — enter your video ID to begin.");
     }
   }, []);
 
+  // Poll ranked questions while streaming
   useEffect(() => {
     if (!streaming) return;
     const fetchQ = async () => {
@@ -52,9 +72,35 @@ export default function App() {
     return () => clearInterval(interval);
   }, [streaming]);
 
+  // ── Auth ─────────────────────────────────────────────────────────────────
   const handleLogin = async () => {
     const res = await axios.get(`${API}/auth/login`);
     window.location.href = res.data.auth_url;
+  };
+
+  // ── End session: stop streaming, return to setup card (tokens kept) ──────
+  const handleEndSession = () => {
+    setStreaming(false);
+    setQuestions([]);
+    setAnsweredQuestions([]);
+    setCurrentTopic("");
+    setTopicInput("");
+    setVideoId("");
+    setStatus("Authenticated — enter your video ID to begin.");
+  };
+
+  // ── Disconnect account: wipe tokens → show login screen ──────────────────
+  const handleDisconnect = () => {
+    localStorage.removeItem("sf_access_token");
+    localStorage.removeItem("sf_refresh_token");
+    setAccessToken("");
+    setRefreshToken("");
+    setStreaming(false);
+    setQuestions([]);
+    setAnsweredQuestions([]);
+    setCurrentTopic("");
+    setVideoId("");
+    setStatus("");
   };
 
   const handleStartStream = async () => {
@@ -188,6 +234,20 @@ export default function App() {
           color: var(--text-mid);
           font-family: monospace;
         }
+        .btn-end-session {
+          padding: 5px 13px;
+          background: rgba(255,59,59,0.12);
+          border: 1px solid rgba(255,59,59,0.35);
+          border-radius: 8px;
+          color: var(--red);
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          font-family: var(--font-sans);
+          letter-spacing: 0.02em;
+          transition: background 0.15s;
+        }
+        .btn-end-session:hover { background: rgba(255,59,59,0.2); }
 
         /* TOPIC BAR */
         .topic-bar {
@@ -412,8 +472,8 @@ export default function App() {
           opacity: 0.6;
           line-height: 1;
         }
-        .btn-delete:hover { background: var(--red-dim); opacity: 1; transform: scale(1.05); }
         .btn-delete:active { transform: scale(0.95); }
+        .btn-delete:hover { background: var(--red-dim); opacity: 1; transform: scale(1.05); }
 
         .empty-state {
           padding: 48px 24px;
@@ -496,6 +556,18 @@ export default function App() {
           justify-content: center;
           gap: 6px;
         }
+        .btn-disconnect {
+          margin-top: 12px;
+          background: none;
+          border: none;
+          color: var(--text-muted);
+          font-size: 12px;
+          cursor: pointer;
+          font-family: var(--font-sans);
+          text-decoration: underline;
+          transition: color 0.15s;
+        }
+        .btn-disconnect:hover { color: var(--red); }
 
         /* SCROLLBAR */
         .panel-scroll::-webkit-scrollbar { width: 5px; }
@@ -518,6 +590,11 @@ export default function App() {
             <div className="video-id-tag">{videoId}</div>
           )}
           <span>{streaming ? `${questions.length} active · ${answeredQuestions.length} answered` : "Not streaming"}</span>
+          {streaming && (
+            <button id="btn-end-session" className="btn-end-session" onClick={handleEndSession}>
+              End Session
+            </button>
+          )}
         </div>
       </div>
 
@@ -532,15 +609,16 @@ export default function App() {
             </p>
             {!accessToken ? (
               <>
-                <button className="btn-primary" onClick={handleLogin}>
+                <button id="btn-connect-youtube" className="btn-primary" onClick={handleLogin}>
                   Connect YouTube Account
                 </button>
-                {status && <div className="setup-status">✓ {status}</div>}
+                {status && <div className="setup-status">{status}</div>}
               </>
             ) : (
               <>
-                {status && <div className="setup-status" style={{ marginBottom: 16 }}>✓ {status}</div>}
+                {status && <div className="setup-status" style={{ marginBottom: 16 }}>&#10003; {status}</div>}
                 <input
+                  id="input-video-id"
                   className="setup-input"
                   placeholder="YouTube Video ID (e.g. dQw4w9WgXcQ)"
                   value={videoId}
@@ -548,12 +626,20 @@ export default function App() {
                   onKeyDown={(e) => e.key === "Enter" && handleStartStream()}
                 />
                 <button
+                  id="btn-start-stream"
                   className="btn-primary"
                   onClick={handleStartStream}
                   disabled={!videoId}
                   style={{ opacity: videoId ? 1 : 0.45 }}
                 >
                   Start Filtering Chat →
+                </button>
+                <button
+                  id="btn-disconnect-account"
+                  className="btn-disconnect"
+                  onClick={handleDisconnect}
+                >
+                  Disconnect account
                 </button>
               </>
             )}
