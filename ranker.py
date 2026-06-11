@@ -25,26 +25,26 @@ def get_client() -> OpenAI:
         )
     return _client
 
-BUFFER_WINDOW_SECONDS = 4 * 60  # 4 minutes
+# BUFFER_WINDOW_SECONDS = 4 * 60  # 4 minutes
 
 # Rolling buffer: list of dicts with text, username, timestamp
 rolling_buffer: list[dict] = []
 
 
 def add_to_buffer(messages: list[dict]):
-    """Add new messages to buffer and evict old ones."""
-    now = int(time.time() * 1000)
-    cutoff = now - (BUFFER_WINDOW_SECONDS * 1000)
+    """Add new messages to buffer. Time-based eviction is disabled; messages remain until answered."""
+    # now = int(time.time() * 1000)
+    # cutoff = now - (BUFFER_WINDOW_SECONDS * 1000)
 
     for msg in messages:
         rolling_buffer.append(msg)
 
-    before = len(rolling_buffer)
-    rolling_buffer[:] = [m for m in rolling_buffer if m.get("timestamp", 0) >= cutoff]
-    evicted = before - len(rolling_buffer)
-
-    if evicted:
-        print(f"[Ranker] Evicted {evicted} old messages from buffer")
+    # before = len(rolling_buffer)
+    # rolling_buffer[:] = [m for m in rolling_buffer if m.get("timestamp", 0) >= cutoff]
+    # evicted = before - len(rolling_buffer)
+    # 
+    # if evicted:
+    #     print(f"[Ranker] Evicted {evicted} old messages from buffer")
 
 
 def set_buffer_context(topic: str):
@@ -52,12 +52,13 @@ def set_buffer_context(topic: str):
     print(f"[Ranker] Context updated → '{topic}'")
 
 
-def group_and_rank() -> list[dict]:
+def group_and_rank(answered_canonicals: set[str] = None) -> list[dict]:
     """
     Send buffer to LLM → filter irrelevant → group similar questions →
     rank by viewer_count then mean_timestamp.
     Returns ranked list of unique questions.
     """
+    global rolling_buffer
     if not rolling_buffer:
         return []
 
@@ -113,6 +114,7 @@ Respond ONLY with a JSON array, no explanation, no markdown, like this:
 
     # ─── Build ranked list ────────────────────────────────────────────────────
     ranked = []
+    indices_to_remove = set()
     for group in groups:
         indices = group.get("indices", [])
         members = [rolling_buffer[i] for i in indices if i < len(rolling_buffer)]
@@ -120,15 +122,29 @@ Respond ONLY with a JSON array, no explanation, no markdown, like this:
         if not members:
             continue
 
+        canonical = group["canonical"]
+        
+        # If this canonical question has been marked answered, we want to remove its
+        # constituent messages from rolling_buffer so they are not processed again.
+        if answered_canonicals and canonical in answered_canonicals:
+            indices_to_remove.update(indices)
+            continue
+
         viewer_count = len(members)
         mean_timestamp = int(sum(m.get("timestamp", 0) for m in members) / viewer_count)
 
         ranked.append({
-            "canonical": group["canonical"],
+            "canonical": canonical,
             "viewer_count": viewer_count,
             "mean_timestamp": mean_timestamp,
             "contributors": [m["username"] for m in members]
         })
+
+    # Evict the answered/deleted messages from the rolling buffer
+    if indices_to_remove:
+        before = len(rolling_buffer)
+        rolling_buffer = [m for i, m in enumerate(rolling_buffer) if i not in indices_to_remove]
+        print(f"[Ranker] Removed {before - len(rolling_buffer)} answered/deleted messages from buffer")
 
     # ─── Sort: viewer_count DESC, tiebreak mean_timestamp DESC ───────────────
     ranked.sort(key=lambda x: (x["viewer_count"], x["mean_timestamp"]), reverse=True)

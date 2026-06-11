@@ -7,7 +7,7 @@ from typing import List, Optional
 import time
 from classifier import is_question
 from prefilter import prefilter
-from deduplicator import is_duplicate
+# from deduplicator import is_duplicate
 from ranker import add_to_buffer, group_and_rank, set_buffer_context
 
 app = FastAPI()
@@ -51,11 +51,12 @@ def process_messages(messages: list[dict]):
     cleaned = prefilter(messages)
     questions = []
     for msg in cleaned:
-        if is_question(msg["text"]) and not is_duplicate(msg["text"]):
+        # Check if question (deduplicator is commented out to allow LLM to handle grouping/popularity)
+        if is_question(msg["text"]):  # and not is_duplicate(msg["text"]):
             questions.append(msg)
 
     add_to_buffer(questions)
-    ranked_questions = group_and_rank()
+    ranked_questions = group_and_rank(answered_canonicals)
     ranked_questions = [
         q for q in ranked_questions
         if q["canonical"] not in answered_canonicals
